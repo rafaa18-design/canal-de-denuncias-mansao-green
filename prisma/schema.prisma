@@ -1,0 +1,109 @@
+// Canal de Denúncias — Mansão Green
+// Princípio inegociável: nenhuma coluna de dado pessoal / rastreável do
+// denunciante (IP, user-agent, e-mail, telefone, device id). Privacy by design.
+// Ver "Documento de Arquitetura Técnica" no Asani Hub (projeto ASN-2026-0035).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Categorias de denúncia oferecidas no formulário público.
+/// Lista final é definida no kickoff com a Mansão Green (seed posterior).
+model Categoria {
+  id        String     @id @default(cuid())
+  nome      String     @unique
+  descricao String?
+  ativo     Boolean    @default(true)
+  ordem     Int        @default(0)
+  createdAt DateTime   @default(now())
+  denuncias Denuncia[]
+
+  @@index([ativo, ordem])
+}
+
+/// Uma denúncia/desabafo anônimo. O `relato` é o único dado sensível.
+model Denuncia {
+  id              String             @id @default(cuid())
+  /// Código público de acompanhamento (não sequencial, não enumerável).
+  protocolo       String             @unique
+  categoriaId     String
+  categoria       Categoria          @relation(fields: [categoriaId], references: [id])
+  /// Texto livre do denunciante. Alvo da política de retenção/anonimização.
+  relato          String
+  status          StatusDenuncia     @default(RECEBIDA)
+  /// Resposta pública opcional, exibida na consulta por protocolo.
+  respostaPublica String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  historico       HistoricoTriagem[]
+
+  @@index([status, createdAt])
+  @@index([categoriaId])
+}
+
+/// Trilha de triagem interna. `autor` é sempre a equipe, nunca o denunciante.
+model HistoricoTriagem {
+  id         String          @id @default(cuid())
+  denunciaId String
+  denuncia   Denuncia        @relation(fields: [denunciaId], references: [id], onDelete: Cascade)
+  autorId    String
+  autor      AdminUser       @relation(fields: [autorId], references: [id])
+  tipo       TipoHistorico
+  statusDe   StatusDenuncia?
+  statusPara StatusDenuncia?
+  nota       String?
+  createdAt  DateTime        @default(now())
+
+  @@index([denunciaId, createdAt])
+}
+
+/// Equipe interna que opera o painel (Mansão Green). Não é o denunciante.
+model AdminUser {
+  id        String             @id @default(cuid())
+  nome      String
+  email     String             @unique
+  senhaHash String
+  role      RoleAdmin          @default(ANALISTA)
+  ativo     Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  historico HistoricoTriagem[]
+  pushSubscriptions PushSubscription[]
+}
+
+/// Inscrição Web Push de um membro da equipe (para notificar denúncia nova).
+/// É dado da equipe interna — não tem relação com o denunciante.
+model PushSubscription {
+  id          String    @id @default(cuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  endpoint    String    @unique
+  p256dh      String
+  auth        String
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
+}
+
+enum StatusDenuncia {
+  RECEBIDA
+  EM_ANALISE
+  TRATADA
+  ARQUIVADA
+}
+
+enum TipoHistorico {
+  MUDANCA_STATUS
+  NOTA_INTERNA
+  RESPOSTA_PUBLICA
+}
+
+enum RoleAdmin {
+  ADMIN
+  ANALISTA
+}

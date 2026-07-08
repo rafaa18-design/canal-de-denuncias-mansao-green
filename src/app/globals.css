@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+/* ── Identidade Mansão Green: preto + verde-limão neon (mansaogreen.com) ── */
+@theme {
+  --color-canvas: #0d0d0d; /* fundo quase-preto */
+  --color-canvas-elevated: #161616; /* cartão/superfície */
+  --color-canvas-subtle: #1d1d1d;
+  --color-canvas-inset: #000000;
+
+  --color-content: #f4f4f5; /* texto (branco) */
+  --color-content-secondary: #a1a1aa;
+  --color-content-tertiary: #71717a;
+
+  --color-edge: #262626; /* bordas */
+  --color-edge-hover: #3a3a3a;
+
+  --color-primary: #9dff00; /* verde-limão neon (marca) */
+  --color-primary-light: #b0ff3a;
+
+  --color-success: #22c55e;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
+}
+
+@theme inline {
+  --font-sans: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-content);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(157, 255, 0, 0.25);
+}
+
+:where(a, button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+:where(a, button, select, [role="button"]) {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Corrige o dropdown nativo no tema escuro */
+select option {
+  background-color: var(--color-canvas-elevated);
+  color: var(--color-content);
+}
+
+/* ── Componentes ── */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-bold text-canvas transition hover:bg-primary-light active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-edge px-4 py-2.5 text-sm font-medium text-content-secondary transition hover:border-edge-hover hover:bg-canvas-subtle hover:text-content;
+  }
+  .input-field {
+    @apply w-full rounded-lg border border-edge bg-canvas-subtle px-4 py-3 text-[15px] text-content transition placeholder:text-content-tertiary hover:border-edge-hover focus:border-primary focus:outline-none;
+  }
+  .section-card {
+    @apply rounded-2xl border border-edge bg-canvas-elevated;
+  }
+  .field-label {
+    @apply block text-sm font-semibold text-content;
+  }
+}
+
+.input-field:focus {
+  box-shadow: 0 0 0 3px rgba(157, 255, 0, 0.15);
+}
+
+/* ── Movimento ── */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-slide-up-2 {
+  animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
+}
+.animate-scale-in {
+  animation: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up,
+  .animate-slide-up-2,
+  .animate-scale-in {
+    animation: none;
+  }
+}
