@@ -16,7 +16,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Canal de Denúncias — fale com segurança",
   description:
-    "Um canal 100% anônimo para denunciar ou desabafar sobre apostas. Sem nome, sem contato, sem rastro.",
+    "Um canal 100% anônimo para denunciar assédio, abuso, fraude ou qualquer outra irregularidade. Sem nome, sem contato, sem rastro.",
   robots: { index: false, follow: false },
 };
 

@@ -26,11 +26,12 @@ export default async function Page() {
           Espaço seguro e anônimo
         </span>
         <h1 className="mt-4 text-3xl font-extrabold leading-[1.1] tracking-tight text-content sm:text-4xl">
-          Fale sobre apostas, sem se expor.
+          Denuncie, sem se expor.
         </h1>
         <p className="mt-3 max-w-md leading-relaxed text-content-secondary">
-          Denuncie ou apenas desabafe. Sem nome, sem contato, sem rastro — só
-          você e o que precisa contar.
+          Presenciou ou sofreu algo errado — assédio, abuso, fraude ou qualquer
+          outra irregularidade? Seja você da equipe ou de fora, relate aqui. Sem
+          nome, sem contato, sem rastro.
         </p>
       </header>
 
