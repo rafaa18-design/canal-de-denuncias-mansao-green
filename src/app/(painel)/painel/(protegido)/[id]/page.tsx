@@ -2,8 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { STATUS_META } from "@/lib/status";
+import { PRIORIDADE_META } from "@/lib/prioridade";
+import { PRAZO_META, paraInputDate, situacaoPrazo } from "@/lib/prazo";
 import type { StatusDenuncia } from "@/generated/prisma/client";
 import { ControlesTriagem } from "./_components/controles-triagem";
+import { ConversaEquipe } from "./_components/conversa-equipe";
 
 function rotuloStatus(s: StatusDenuncia | null): string {
   return s ? STATUS_META[s].rotulo : "—";
@@ -13,6 +16,9 @@ const TIPO_ROTULO = {
   MUDANCA_STATUS: "Status",
   NOTA_INTERNA: "Nota interna",
   RESPOSTA_PUBLICA: "Resposta pública",
+  ATRIBUICAO: "Atribuição",
+  PRIORIDADE: "Prioridade",
+  PRAZO: "Prazo",
 } as const;
 
 export const dynamic = "force-dynamic";
@@ -28,6 +34,11 @@ export default async function DetalheDenuncia({
     where: { id },
     include: {
       categoria: { select: { nome: true } },
+      responsavel: { select: { id: true, nome: true } },
+      mensagens: {
+        orderBy: { createdAt: "asc" },
+        include: { autor: { select: { nome: true } } },
+      },
       historico: {
         orderBy: { createdAt: "desc" },
         include: { autor: { select: { nome: true } } },
@@ -37,10 +48,25 @@ export default async function DetalheDenuncia({
 
   if (!denuncia) notFound();
 
+  // Marca como lidas as mensagens do denunciante ao abrir o caso.
+  await prisma.mensagemDenuncia.updateMany({
+    where: { denunciaId: id, autoria: "DENUNCIANTE", lidaPelaEquipe: false },
+    data: { lidaPelaEquipe: true },
+  });
+
+  const admins = await prisma.adminUser.findMany({
+    where: { ativo: true },
+    orderBy: { nome: "asc" },
+    select: { id: true, nome: true },
+  });
+
+  const agora = new Date();
+  const prazoSit = situacaoPrazo(denuncia.prazo, denuncia.status, agora);
+
   return (
     <div className="space-y-6">
       <Link
-        href="/painel"
+        href="/painel/denuncias"
         className="text-sm text-content-secondary transition hover:text-primary hover:underline"
       >
         ← Voltar
@@ -59,10 +85,42 @@ export default async function DetalheDenuncia({
             {denuncia.createdAt.toLocaleString("pt-BR")}
           </p>
         </div>
-        <span
-          className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_META[denuncia.status].cor}`}
-        >
-          {STATUS_META[denuncia.status].rotulo}
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${PRIORIDADE_META[denuncia.prioridade].cor}`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${PRIORIDADE_META[denuncia.prioridade].pontoCor}`}
+            />
+            {PRIORIDADE_META[denuncia.prioridade].rotulo}
+          </span>
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_META[denuncia.status].cor}`}
+          >
+            {STATUS_META[denuncia.status].rotulo}
+          </span>
+        </div>
+      </div>
+
+      {/* Meta: responsável e prazo */}
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-content-secondary">
+        <span>
+          Responsável:{" "}
+          <span className="text-content">
+            {denuncia.responsavel?.nome ?? "—"}
+          </span>
+        </span>
+        <span>
+          Prazo:{" "}
+          {denuncia.prazo ? (
+            <span className={PRAZO_META[prazoSit].cor}>
+              {denuncia.prazo.toLocaleDateString("pt-BR")}
+              {(prazoSit === "VENCIDO" || prazoSit === "VENCE_HOJE") &&
+                ` · ${PRAZO_META[prazoSit].rotulo}`}
+            </span>
+          ) : (
+            <span className="text-content-tertiary">—</span>
+          )}
         </span>
       </div>
 
@@ -78,7 +136,22 @@ export default async function DetalheDenuncia({
       <ControlesTriagem
         denunciaId={denuncia.id}
         statusAtual={denuncia.status}
+        prioridadeAtual={denuncia.prioridade}
+        prazoAtual={paraInputDate(denuncia.prazo)}
+        responsavelIdAtual={denuncia.responsavel?.id ?? null}
+        admins={admins}
         respostaAtual={denuncia.respostaPublica}
+      />
+
+      <ConversaEquipe
+        denunciaId={denuncia.id}
+        mensagens={denuncia.mensagens.map((m) => ({
+          id: m.id,
+          autoria: m.autoria,
+          autorNome: m.autor?.nome ?? null,
+          corpo: m.corpo,
+          quando: m.createdAt.toLocaleString("pt-BR"),
+        }))}
       />
 
       <div>
@@ -86,7 +159,9 @@ export default async function DetalheDenuncia({
           Histórico de triagem
         </p>
         {denuncia.historico.length === 0 ? (
-          <p className="text-sm text-content-secondary">Sem movimentações ainda.</p>
+          <p className="text-sm text-content-secondary">
+            Sem movimentações ainda.
+          </p>
         ) : (
           <ul className="space-y-2">
             {denuncia.historico.map((h) => (

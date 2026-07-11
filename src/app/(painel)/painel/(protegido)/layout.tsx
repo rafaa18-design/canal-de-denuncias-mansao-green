@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { NavPainel } from "./_components/nav-painel";
 
 export const metadata = {
   title: "Painel — Canal de Denúncias",
@@ -56,6 +57,7 @@ export default async function PainelLayout({
             </form>
           </div>
         </div>
+        <NavPainel />
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-7">
         {children}

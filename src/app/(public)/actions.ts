@@ -9,14 +9,22 @@ import {
 import { STATUS_META } from "@/lib/status";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { chaveClienteAnonima } from "@/lib/request-info";
-import { enviarNotificacaoNovaDenuncia } from "@/lib/push";
+import {
+  enviarNotificacaoNovaDenuncia,
+  enviarNotificacaoNovaMensagem,
+} from "@/lib/push";
 
 const RELATO_MIN = 10;
 const RELATO_MAX = 5000;
+const MENSAGEM_MAX = 4000;
 
 // Anti-flood: no máximo N envios por janela, por cliente (IP hasheado, efêmero).
 const ENVIO_LIMITE = 5;
 const ENVIO_JANELA_MS = 10 * 60 * 1000; // 10 minutos
+
+// Anti-flood das respostas do denunciante (mais permissivo que o envio inicial).
+const MENSAGEM_LIMITE = 10;
+const MENSAGEM_JANELA_MS = 10 * 60 * 1000;
 
 export type CriarDenunciaState =
   { ok: true; protocolo: string } | { ok: false; erro: string } | null;
@@ -97,18 +105,44 @@ export async function criarDenuncia(
   };
 }
 
+export type MensagemPublica = {
+  id: string;
+  daEquipe: boolean;
+  corpo: string;
+  quando: string;
+};
+
 export type ConsultaState =
   | {
       ok: true;
+      protocolo: string;
       status: string;
       statusPublico: string;
       respostaPublica: string | null;
       criadaEm: string;
+      mensagens: MensagemPublica[];
     }
   | { ok: false; erro: string }
   | null;
 
-/** Consulta pública do andamento por protocolo. Só expõe status público. */
+/** Formata a conversa de uma denúncia para exibição pública (sem dados internos). */
+function conversaPublica(
+  mensagens: {
+    id: string;
+    autoria: "DENUNCIANTE" | "EQUIPE";
+    corpo: string;
+    createdAt: Date;
+  }[],
+): MensagemPublica[] {
+  return mensagens.map((m) => ({
+    id: m.id,
+    daEquipe: m.autoria === "EQUIPE",
+    corpo: m.corpo,
+    quando: m.createdAt.toLocaleString("pt-BR"),
+  }));
+}
+
+/** Consulta pública do andamento por protocolo. Só expõe dados públicos. */
 export async function consultarProtocolo(
   _prev: ConsultaState,
   formData: FormData,
@@ -124,7 +158,16 @@ export async function consultarProtocolo(
 
   const denuncia = await prisma.denuncia.findUnique({
     where: { protocolo },
-    select: { status: true, respostaPublica: true, createdAt: true },
+    select: {
+      id: true,
+      status: true,
+      respostaPublica: true,
+      createdAt: true,
+      mensagens: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, autoria: true, corpo: true, createdAt: true },
+      },
+    },
   });
 
   if (!denuncia) {
@@ -134,11 +177,87 @@ export async function consultarProtocolo(
     };
   }
 
+  // Marca como lidas pelo denunciante as mensagens que a equipe enviou.
+  await prisma.mensagemDenuncia.updateMany({
+    where: {
+      denunciaId: denuncia.id,
+      autoria: "EQUIPE",
+      lidaPeloDenunciante: false,
+    },
+    data: { lidaPeloDenunciante: true },
+  });
+
   return {
     ok: true,
+    protocolo,
     status: denuncia.status,
     statusPublico: STATUS_META[denuncia.status].publico,
     respostaPublica: denuncia.respostaPublica,
     criadaEm: denuncia.createdAt.toLocaleDateString("pt-BR"),
+    mensagens: conversaPublica(denuncia.mensagens),
   };
+}
+
+export type RespostaState =
+  | { ok: true; mensagens: MensagemPublica[] }
+  | { ok: false; erro: string }
+  | null;
+
+/**
+ * Mensagem do denunciante para a equipe, identificada só pelo protocolo.
+ * Anônima por construção: nenhum dado pessoal, apenas texto livre.
+ */
+export async function responderComoDenunciante(
+  _prev: RespostaState,
+  formData: FormData,
+): Promise<RespostaState> {
+  const entrada = String(formData.get("protocolo") ?? "");
+  if (!protocoloValido(entrada)) {
+    return { ok: false, erro: "Protocolo inválido." };
+  }
+  const protocolo = normalizarProtocolo(entrada);
+
+  const corpo = String(formData.get("corpo") ?? "")
+    .trim()
+    .slice(0, MENSAGEM_MAX);
+  if (corpo.length < 1) {
+    return { ok: false, erro: "Escreva uma mensagem antes de enviar." };
+  }
+
+  const chave = await chaveClienteAnonima();
+  const limite = checkRateLimit(`msg:${chave}`, {
+    limite: MENSAGEM_LIMITE,
+    janelaMs: MENSAGEM_JANELA_MS,
+  });
+  if (!limite.ok) {
+    const minutos = Math.max(1, Math.ceil(limite.retryAfterMs / 60000));
+    return {
+      ok: false,
+      erro: `Muitas mensagens em pouco tempo. Aguarde cerca de ${minutos} min.`,
+    };
+  }
+
+  const denuncia = await prisma.denuncia.findUnique({
+    where: { protocolo },
+    select: { id: true },
+  });
+  if (!denuncia) {
+    return {
+      ok: false,
+      erro: "Nenhuma denúncia encontrada para este protocolo.",
+    };
+  }
+
+  await prisma.mensagemDenuncia.create({
+    data: { denunciaId: denuncia.id, autoria: "DENUNCIANTE", corpo },
+  });
+  await enviarNotificacaoNovaMensagem();
+
+  const mensagens = await prisma.mensagemDenuncia.findMany({
+    where: { denunciaId: denuncia.id },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, autoria: true, corpo: true, createdAt: true },
+  });
+
+  return { ok: true, mensagens: conversaPublica(mensagens) };
 }

@@ -36,14 +36,44 @@ model Denuncia {
   /// Texto livre do denunciante. Alvo da política de retenção/anonimização.
   relato          String
   status          StatusDenuncia     @default(RECEBIDA)
+  /// Gravidade avaliada pela equipe na triagem.
+  prioridade      PrioridadeDenuncia @default(MEDIA)
+  /// Prazo interno de tratamento (SLA). Base para destacar casos vencidos.
+  prazo           DateTime?
+  /// Analista da equipe responsável pelo caso (atribuição interna).
+  responsavelId   String?
+  responsavel     AdminUser?         @relation("Responsavel", fields: [responsavelId], references: [id])
   /// Resposta pública opcional, exibida na consulta por protocolo.
   respostaPublica String?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   historico       HistoricoTriagem[]
+  mensagens       MensagemDenuncia[]
 
   @@index([status, createdAt])
   @@index([categoriaId])
+  @@index([responsavelId])
+  @@index([prioridade])
+}
+
+/// Conversa anônima e bidirecional sobre uma denúncia. A mensagem do denunciante
+/// NÃO carrega dado pessoal — é texto livre, mesma sensibilidade do `relato`, e
+/// `autorId` fica nulo (o denunciante é sempre anônimo, identificado só pelo
+/// protocolo). Mensagens da equipe têm `autorId` preenchido.
+model MensagemDenuncia {
+  id                  String          @id @default(cuid())
+  denunciaId          String
+  denuncia            Denuncia        @relation(fields: [denunciaId], references: [id], onDelete: Cascade)
+  autoria             AutoriaMensagem
+  autorId             String?
+  autor               AdminUser?      @relation("AutorMensagem", fields: [autorId], references: [id])
+  corpo               String
+  /// Controle de "não lida" para os badges de cada lado da conversa.
+  lidaPelaEquipe      Boolean         @default(false)
+  lidaPeloDenunciante Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+
+  @@index([denunciaId, createdAt])
 }
 
 /// Trilha de triagem interna. `autor` é sempre a equipe, nunca o denunciante.
@@ -73,6 +103,8 @@ model AdminUser {
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   historico HistoricoTriagem[]
+  responsavelPor    Denuncia[]         @relation("Responsavel")
+  mensagens         MensagemDenuncia[] @relation("AutorMensagem")
   pushSubscriptions PushSubscription[]
 }
 
@@ -101,6 +133,20 @@ enum TipoHistorico {
   MUDANCA_STATUS
   NOTA_INTERNA
   RESPOSTA_PUBLICA
+  ATRIBUICAO
+  PRIORIDADE
+  PRAZO
+}
+
+enum PrioridadeDenuncia {
+  ALTA
+  MEDIA
+  BAIXA
+}
+
+enum AutoriaMensagem {
+  DENUNCIANTE
+  EQUIPE
 }
 
 enum RoleAdmin {

@@ -23,22 +23,16 @@ export type PushPayload = {
 };
 
 /**
- * Notifica TODA a equipe sobre denúncia nova. Payload SEM conteúdo sensível:
- * apenas um aviso genérico + link pro painel (nunca o relato).
- * Nunca lança — falha de push jamais deve quebrar o registro da denúncia.
+ * Envia um payload a TODA a equipe. Payload SEM conteúdo sensível (nunca o
+ * relato/mensagem). Nunca lança — falha de push jamais quebra o fluxo.
  */
-export async function enviarNotificacaoNovaDenuncia(): Promise<void> {
+async function notificarEquipe(payload: PushPayload): Promise<void> {
   try {
     if (!garantirConfig()) return;
 
     const inscricoes = await prisma.pushSubscription.findMany();
     if (inscricoes.length === 0) return;
 
-    const payload: PushPayload = {
-      title: "Nova denúncia recebida",
-      body: "Abra o painel para triar.",
-      url: "/painel",
-    };
     const corpo = JSON.stringify(payload);
 
     const resultados = await Promise.allSettled(
@@ -70,4 +64,22 @@ export async function enviarNotificacaoNovaDenuncia(): Promise<void> {
   } catch (e) {
     console.error("[push] falha ao notificar:", e);
   }
+}
+
+/** Notifica a equipe sobre uma denúncia nova. */
+export async function enviarNotificacaoNovaDenuncia(): Promise<void> {
+  await notificarEquipe({
+    title: "Nova denúncia recebida",
+    body: "Abra o painel para triar.",
+    url: "/painel",
+  });
+}
+
+/** Notifica a equipe sobre uma nova mensagem enviada por um denunciante. */
+export async function enviarNotificacaoNovaMensagem(): Promise<void> {
+  await notificarEquipe({
+    title: "Nova mensagem de um denunciante",
+    body: "Um denunciante respondeu. Abra o painel.",
+    url: "/painel/denuncias",
+  });
 }
